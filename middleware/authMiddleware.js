@@ -24,10 +24,10 @@ const protect = async (req, res, next) => {
 };
 
 const isTeacher = (req, res, next) => {
-    if (req.user && req.user.role === 'teacher') {
+    if (req.user && (req.user.role === 'teacher' || req.user.role === 'super admin')) {
         next();
     } else {
-        res.status(403).json({ message: 'Access denied. Teacher role required.' });
+        res.status(403).json({ message: 'Access denied. Teacher or Super Admin role required.' });
     }
 };
 

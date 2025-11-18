@@ -73,11 +73,24 @@ router.get('/:id', async (req, res) => {
         }
         const moduleData = modules[0];
 
-        const [materials] = await db.query('SELECT * FROM materials WHERE module_id = ? ORDER BY created_at ASC', [req.params.id]);
+        const [topics] = await db.query(
+            'SELECT * FROM topics WHERE module_id = ? ORDER BY position ASC', 
+            [req.params.id]
+        );
+
+        const [materials] = await db.query(
+            'SELECT * FROM materials WHERE module_id = ? ORDER BY created_at ASC', 
+            [req.params.id]
+        );
+
+        const topicsWithMaterials = topics.map(topic => ({
+            ...topic,
+            materials: materials.filter(material => material.topic_id === topic.id)
+        }));
 
         const response = {
             ...moduleData,
-            materials: materials
+            topics: topicsWithMaterials
         };
 
         res.json(response);
@@ -87,17 +100,51 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+router.post('/:moduleId/topics', protect, isTeacher, async (req, res) => {
+    const { moduleId } = req.params;
+    const { title } = req.body;
+    const author_id = req.user.id;
+
+    if (!title) {
+        return res.status(400).json({ message: 'Judul topik tidak boleh kosong.' });
+    }
+
+    try {
+        const [modules] = await db.query('SELECT author_id FROM modules WHERE id = ?', [moduleId]);
+        if (modules.length === 0 || (modules[0].author_id !== author_id && req.user.role !== 'super admin')) {
+            return res.status(403).json({ message: 'Tidak diizinkan menambah topik pada modul ini.' });
+        }
+
+        const [[{ max_position }]] = await db.query(
+            'SELECT COALESCE(MAX(position), 0) as max_position FROM topics WHERE module_id = ?',
+            [moduleId]
+        );
+        const newPosition = max_position + 1;
+
+        const [result] = await db.query(
+            'INSERT INTO topics (module_id, title, position) VALUES (?, ?, ?)',
+            [moduleId, title, newPosition]
+        );
+
+        res.status(201).json({ message: 'Topik berhasil ditambahkan', topicId: result.insertId });
+
+    } catch (error) {
+        console.error('Error saat menambah topik:', error);
+        res.status(500).json({ message: 'Server error saat menambah topik.' });
+    }
+});
+
 router.post('/', protect, isTeacher, upload.single('image'), async (req, res) => {
     const { title, short_description } = req.body;
     const author_id = req.user.id;
     let image_url = null;
 
     if (!title || !short_description) {
-        return res.status(400).json({ message: 'Please provide title and short description.' });
+        return res.status(400).json({ message: 'Mohon tambahkan judul dan deskripsi singkat.' });
     }
     
     if (!req.file) {
-        return res.status(400).json({ message: 'A module image is required.' });
+        return res.status(400).json({ message: 'Gambar modul dibutuhkan.' });
     }
 
     try {
@@ -108,7 +155,7 @@ router.post('/', protect, isTeacher, upload.single('image'), async (req, res) =>
             'INSERT INTO modules (title, short_description, image_url, author_id) VALUES (?, ?, ?, ?)',
             [title, short_description, image_url, author_id]
         );
-        res.status(201).json({ message: 'Module created successfully', moduleId: result.insertId });
+        res.status(201).json({ message: 'Modul sukses dibuat!', moduleId: result.insertId });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error during module creation or image upload.' });
@@ -121,7 +168,7 @@ router.put('/:id', protect, isTeacher, upload.single('image'), async (req, res) 
     const author_id = req.user.id;
 
     if (!title || !short_description) {
-        return res.status(400).json({ message: 'Please provide title and short description.' });
+        return res.status(400).json({ message: 'Mohon tambahkan judul dan deskripsi singkat.' });
     }
 
     try {
@@ -130,7 +177,7 @@ router.put('/:id', protect, isTeacher, upload.single('image'), async (req, res) 
             return res.status(404).json({ message: 'Module not found' });
         }
 
-        if (modules[0].author_id !== author_id) {
+        if (modules[0].author_id !== author_id && req.user.role !== 'super admin') {
             return res.status(403).json({ message: 'User not authorized to update this module' });
         }
 
@@ -157,6 +204,7 @@ router.put('/:id', protect, isTeacher, upload.single('image'), async (req, res) 
 router.delete('/:id', protect, isTeacher, async (req, res) => {
     const moduleId = req.params.id;
     const author_id = req.user.id;
+    const user_role = req.user.role;
 
     try {
         const [modules] = await db.query('SELECT * FROM modules WHERE id = ?', [moduleId]);
@@ -164,12 +212,12 @@ router.delete('/:id', protect, isTeacher, async (req, res) => {
             return res.status(404).json({ message: 'Module not found' });
         }
 
-        if (modules[0].author_id !== author_id) {
+        if (modules[0].author_id !== author_id && user_role !== 'super admin') {
             return res.status(403).json({ message: 'User not authorized to delete this module' });
         }
 
         await db.query('DELETE FROM modules WHERE id = ?', [moduleId]);
-        res.json({ message: 'Module deleted successfully' });
+        res.json({ message: 'Module berhasil dihapus' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error' });

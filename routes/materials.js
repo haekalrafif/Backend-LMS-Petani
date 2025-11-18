@@ -7,38 +7,35 @@ const { uploadToCloudinary } = require('../config/cloudinary');
 
 router.post('/:moduleId/materials', protect, isTeacher, upload.single('image'), async (req, res) => {
     const { moduleId } = req.params;
-    const { title, content } = req.body;
+    const { title, content, topic_id, youtube_url } = req.body;
     const author_id = req.user.id;
     let image_url = null;
 
-    if (!title || !content) {
-        return res.status(400).json({ message: 'Please provide a title and content for the material.' });
+    if (!title || !content || !topic_id) {
+        return res.status(400).json({ message: 'Judul, konten, dan topik ID harus diisi.' });
     }
 
     try {
         const [modules] = await db.query('SELECT author_id FROM modules WHERE id = ?', [moduleId]);
-        if (modules.length === 0) {
-            return res.status(404).json({ message: 'Module not found.' });
-        }
-        if (modules[0].author_id !== author_id) {
-            return res.status(403).json({ message: 'User not authorized to add material to this module.' });
+        if (modules.length === 0 || (modules[0].author_id !== author_id && req.user.role !== 'super admin')) {
+            return res.status(403).json({ message: 'Tidak diizinkan menambah materi pada modul ini.' });
         }
 
         if (req.file) {
             const uploadResult = await uploadToCloudinary(req.file.buffer);
             image_url = uploadResult.secure_url;
         }
-
+        
         const [result] = await db.query(
-            'INSERT INTO materials (module_id, title, content, image_url) VALUES (?, ?, ?, ?)',
-            [moduleId, title, content, image_url]
+            'INSERT INTO materials (module_id, topic_id, title, content, image_url, youtube_url) VALUES (?, ?, ?, ?, ?, ?)',
+            [moduleId, topic_id, title, content, image_url, youtube_url]
         );
 
-        res.status(201).json({ message: 'Material added successfully', materialId: result.insertId });
+        res.status(201).json({ message: 'Materi berhasil ditambahkan', materialId: result.insertId });
 
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server error while adding material.' });
+        res.status(500).json({ message: 'Server error saat menambah materi.' });
     }
 });
 
@@ -54,7 +51,7 @@ router.get('/:moduleId/materials/:materialId', protect, isTeacher, async (req, r
         const material = materials[0];
 
         const [modules] = await db.query('SELECT author_id FROM modules WHERE id = ?', [moduleId]);
-        if (modules.length === 0 || modules[0].author_id !== author_id) {
+        if (modules.length === 0 || (modules[0].author_id !== author_id && req.user.role !== 'super admin')) {
             return res.status(403).json({ message: 'User not authorized to view this material for editing.' });
         }
 
@@ -67,7 +64,7 @@ router.get('/:moduleId/materials/:materialId', protect, isTeacher, async (req, r
 
 router.put('/:moduleId/materials/:materialId', protect, isTeacher, upload.single('image'), async (req, res) => {
     const { moduleId, materialId } = req.params;
-    const { title, content } = req.body;
+    const { title, content, youtube_url } = req.body;
     const author_id = req.user.id;
     let image_url = null; 
 
@@ -83,7 +80,7 @@ router.put('/:moduleId/materials/:materialId', protect, isTeacher, upload.single
         const existingMaterial = materials[0];
 
         const [modules] = await db.query('SELECT author_id FROM modules WHERE id = ?', [moduleId]);
-        if (modules.length === 0 || modules[0].author_id !== author_id) {
+        if (modules.length === 0 || (modules[0].author_id !== author_id && req.user.role !== 'super admin')) {
             return res.status(403).json({ message: 'User not authorized to update this material.' });
         }
 
@@ -95,8 +92,8 @@ router.put('/:moduleId/materials/:materialId', protect, isTeacher, upload.single
         }
 
         const [result] = await db.query(
-            'UPDATE materials SET title = ?, content = ?, image_url = ? WHERE id = ? AND module_id = ?',
-            [title, content, image_url, materialId, moduleId]
+            'UPDATE materials SET title = ?, content = ?, image_url = ?, youtube_url = ? WHERE id = ? AND module_id = ?',
+            [title, content, image_url, youtube_url, materialId, moduleId]
         );
 
         if (result.affectedRows === 0) {
