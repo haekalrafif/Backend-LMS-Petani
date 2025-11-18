@@ -39,3 +39,7 @@ db.getConnection()
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to the LMS Petani Backend API. Access documentation or API routes under /api/.' });
+});
