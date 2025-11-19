@@ -20,7 +20,6 @@ const decodeToken = (req) => {
     return null;
 };
 
-
 router.get('/', async (req, res) => {
     const user = decodeToken(req);
 
@@ -221,6 +220,38 @@ router.delete('/:id', protect, isTeacher, async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+router.put('/:moduleId/topics/:topicId', protect, isTeacher, async (req, res) => {
+    const { moduleId, topicId } = req.params;
+    const { title } = req.body;
+    const author_id = req.user.id;
+
+    if (!title) {
+        return res.status(400).json({ message: 'Judul topik tidak boleh kosong.' });
+    }
+
+    try {
+        const [modules] = await db.query('SELECT author_id FROM modules WHERE id = ?', [moduleId]);
+        if (modules.length === 0 || (modules[0].author_id !== author_id && req.user.role !== 'super admin')) {
+            return res.status(403).json({ message: 'Tidak diizinkan mengubah topik pada modul ini.' });
+        }
+
+        const [result] = await db.query(
+            'UPDATE topics SET title = ? WHERE id = ? AND module_id = ?',
+            [title, topicId, moduleId]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Topik tidak ditemukan.' });
+        }
+
+        res.json({ message: 'Topik berhasil diperbarui' });
+
+    } catch (error) {
+        console.error('Error saat update topik:', error);
+        res.status(500).json({ message: 'Server error saat update topik.' });
     }
 });
 
