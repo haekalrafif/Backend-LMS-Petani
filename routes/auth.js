@@ -61,7 +61,7 @@ router.post('/login', async (req, res) => {
             }
         };
 
-        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '12h' });
 
         res.json({
             message: 'Berhasil login!',
