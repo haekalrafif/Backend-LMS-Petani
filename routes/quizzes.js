@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken, authorizeRole } = require('../middleware/authMiddleware');
+
+const { protect, isTeacher } = require('../middleware/authMiddleware');
 
 // 1. POST /api/quizzes - Tambah Kuis beserta Soal-soalnya (Hanya Teacher & Super Admin)
-router.post('/', authenticateToken, authorizeRole('teacher', 'super admin'), async (req, res) => {
+router.post('/', protect, isTeacher, async (req, res) => {
     const { module_id, title, passing_score, questions } = req.body;
 
     if (!module_id || !title || !questions || questions.length === 0) {
@@ -12,14 +13,12 @@ router.post('/', authenticateToken, authorizeRole('teacher', 'super admin'), asy
     }
 
     try {
-        // A. Simpan data header kuis ke tabel quizzes
         const [quizResult] = await db.query(
             'INSERT INTO quizzes (module_id, title, passing_score) VALUES (?, ?, ?)',
             [module_id, title, passing_score || 80]
         );
         const quizId = quizResult.insertId;
 
-        // B. Format array soal untuk Bulk Insert ke tabel questions
         const questionValues = questions.map(q => [
             quizId,
             q.question_text,
@@ -30,7 +29,6 @@ router.post('/', authenticateToken, authorizeRole('teacher', 'super admin'), asy
             q.correct_answer
         ]);
 
-        // Eksekusi Bulk Insert
         await db.query(
             'INSERT INTO questions (quiz_id, question_text, option_a, option_b, option_c, option_d, correct_answer) VALUES ?',
             [questionValues]
@@ -44,7 +42,7 @@ router.post('/', authenticateToken, authorizeRole('teacher', 'super admin'), asy
 });
 
 // 2. GET /api/quizzes/module/:moduleId - Ambil Kuis berdasarkan ID Modul (Untuk Halaman Pengerjaan)
-router.get('/module/:moduleId', authenticateToken, async (req, res) => {
+router.get('/module/:moduleId', protect, async (req, res) => {
     const { moduleId } = req.params;
     
     try {
@@ -55,11 +53,8 @@ router.get('/module/:moduleId', authenticateToken, async (req, res) => {
         }
 
         const quiz = quizzes[0];
-        
-        // Ambil semua pertanyaannya
         const [questions] = await db.query('SELECT * FROM questions WHERE quiz_id = ?', [quiz.id]);
 
-        // Gabungkan data
         res.json({ ...quiz, questions });
     } catch (error) {
         console.error('Error fetching quiz:', error);
@@ -68,10 +63,10 @@ router.get('/module/:moduleId', authenticateToken, async (req, res) => {
 });
 
 // 3. POST /api/quizzes/:quizId/submit - Simpan Hasil Nilai Siswa
-router.post('/:quizId/submit', authenticateToken, async (req, res) => {
+router.post('/:quizId/submit', protect, async (req, res) => {
     const { quizId } = req.params;
     const { score, is_passed } = req.body;
-    const userId = req.user.id; // Diambil dari JWT Token
+    const userId = req.user.id; // Diambil dari JWT Token yang di-decode oleh "protect"
 
     try {
         await db.query(
@@ -86,7 +81,7 @@ router.post('/:quizId/submit', authenticateToken, async (req, res) => {
 });
 
 // 4. GET /api/quizzes/:quizId/result - Cek apakah siswa sudah pernah mengerjakan kuis ini
-router.get('/:quizId/result', authenticateToken, async (req, res) => {
+router.get('/:quizId/result', protect, async (req, res) => {
     const { quizId } = req.params;
     const userId = req.user.id;
 
@@ -95,7 +90,6 @@ router.get('/:quizId/result', authenticateToken, async (req, res) => {
             'SELECT * FROM quiz_results WHERE user_id = ? AND quiz_id = ? ORDER BY completed_at DESC LIMIT 1',
             [userId, quizId]
         );
-        // Jika belum pernah, kembalikan null
         res.json(results.length > 0 ? results[0] : null);
     } catch (error) {
         console.error('Error fetching result:', error);
