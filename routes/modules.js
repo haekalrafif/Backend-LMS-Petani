@@ -32,15 +32,24 @@ router.get('/', async (req, res) => {
                 SELECT 
                     m.id, m.title, m.short_description, m.image_url, m.created_at, m.updated_at, 
                     u.username as author,
-                    (SELECT COUNT(*) FROM materials WHERE module_id = m.id) as total_materials,
-                    (SELECT COUNT(*) FROM user_material_completions umc
-                     JOIN materials mat ON umc.material_id = mat.id
-                     WHERE mat.module_id = m.id AND umc.user_id = ?) as completed_materials
+                    (
+                        (SELECT COUNT(*) FROM materials WHERE module_id = m.id) +
+                        (SELECT COUNT(*) FROM quizzes WHERE module_id = m.id)
+                    ) as total_materials,
+                    (
+                        (SELECT COUNT(*) FROM user_material_completions umc
+                         JOIN materials mat ON umc.material_id = mat.id
+                         WHERE mat.module_id = m.id AND umc.user_id = ?) 
+                        +
+                        (SELECT COUNT(DISTINCT q.id) FROM quiz_results qr
+                         JOIN quizzes q ON qr.quiz_id = q.id
+                         WHERE q.module_id = m.id AND qr.user_id = ? AND qr.is_passed = 1)
+                    ) as completed_materials
                 FROM modules m
                 JOIN users u ON m.author_id = u.id
                 ORDER BY m.created_at DESC
             `;
-            queryParams.push(user.id);
+            queryParams.push(user.id, user.id);
         } else {
             query = `
                 SELECT m.id, m.title, m.short_description, m.image_url, m.created_at, m.updated_at, u.username as author
