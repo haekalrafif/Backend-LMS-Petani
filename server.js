@@ -15,12 +15,14 @@ const moduleRoutes = require('./routes/modules');
 const materialRoutes = require('./routes/materials');
 const userRoutes = require('./routes/users');
 const progressRoutes = require('./routes/progress');
+const quizzesRoute = require('./routes/quizzes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/modules', moduleRoutes);
 app.use('/api/modules', materialRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/modules', progressRoutes);
+app.use('/api/quizzes', quizzesRoute);
 
 app.get('/api', (req, res) => {
   const documentationHtml = `
