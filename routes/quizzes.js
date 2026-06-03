@@ -65,14 +65,30 @@ router.get('/module/:moduleId', protect, async (req, res) => {
 // 3. POST /api/quizzes/:quizId/submit - Simpan Hasil Nilai Siswa
 router.post('/:quizId/submit', protect, async (req, res) => {
     const { quizId } = req.params;
-    const { score, is_passed } = req.body;
-    const userId = req.user.id; // Diambil dari JWT Token yang di-decode oleh "protect"
+    const { score, is_passed, answers } = req.body; // Menerima payload answers tambahan
+    const userId = req.user.id;
 
     try {
-        await db.query(
+        // Insert hasil skor utama
+        const [result] = await db.query(
             'INSERT INTO quiz_results (user_id, quiz_id, score, is_passed) VALUES (?, ?, ?, ?)',
             [userId, quizId, score, is_passed]
         );
+        const resultId = result.insertId;
+
+        // Jika ada jawaban, lakukan bulk insert ke tabel user_quiz_answers
+        if (answers && answers.length > 0) {
+            const answerValues = answers.map(a => [
+                resultId,
+                a.question_id,
+                a.selected_option
+            ]);
+            await db.query(
+                'INSERT INTO user_quiz_answers (result_id, question_id, selected_option) VALUES ?',
+                [answerValues]
+            );
+        }
+
         res.status(201).json({ message: 'Hasil kuis berhasil disimpan' });
     } catch (error) {
         console.error('Error saving quiz result:', error);
@@ -80,7 +96,7 @@ router.post('/:quizId/submit', protect, async (req, res) => {
     }
 });
 
-// 4. GET /api/quizzes/:quizId/result - Cek apakah siswa sudah pernah mengerjakan kuis ini
+// 4. GET /api/quizzes/:quizId/result - Ambil Nilai & Riwayat Jawaban
 router.get('/:quizId/result', protect, async (req, res) => {
     const { quizId } = req.params;
     const userId = req.user.id;
@@ -90,7 +106,19 @@ router.get('/:quizId/result', protect, async (req, res) => {
             'SELECT * FROM quiz_results WHERE user_id = ? AND quiz_id = ? ORDER BY completed_at DESC LIMIT 1',
             [userId, quizId]
         );
-        res.json(results.length > 0 ? results[0] : null);
+        
+        if (results.length > 0) {
+            const quizResult = results[0];
+            // Ambil detail jawaban yang dipilih user
+            const [answers] = await db.query(
+                'SELECT question_id, selected_option FROM user_quiz_answers WHERE result_id = ?',
+                [quizResult.id]
+            );
+            quizResult.answers = answers; // Sisipkan jawaban ke dalam object hasil
+            res.json(quizResult);
+        } else {
+            res.json(null);
+        }
     } catch (error) {
         console.error('Error fetching result:', error);
         res.status(500).json({ error: 'Gagal mengambil histori hasil kuis' });
