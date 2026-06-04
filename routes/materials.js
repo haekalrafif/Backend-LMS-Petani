@@ -64,7 +64,7 @@ router.get('/:moduleId/materials/:materialId', protect, isTeacher, async (req, r
 
 router.put('/:moduleId/materials/:materialId', protect, isTeacher, upload.single('image'), async (req, res) => {
     const { moduleId, materialId } = req.params;
-    const { title, content, youtube_url } = req.body;
+    const { title, content, youtube_url, remove_image } = req.body;
     const author_id = req.user.id;
     let image_url = null; 
 
@@ -85,9 +85,14 @@ router.put('/:moduleId/materials/:materialId', protect, isTeacher, upload.single
         }
 
         if (req.file) {
+            // 1. Jika ada file gambar baru yang diunggah
             const uploadResult = await uploadToCloudinary(req.file.buffer);
             image_url = uploadResult.secure_url;
+        } else if (remove_image === 'true') {
+            // 2. Jika user sengaja menghapus gambar dari form
+            image_url = null;
         } else {
+            // 3. Jika user tidak mengubah gambar (tetap pakai gambar lama)
             image_url = existingMaterial.image_url;
         }
 
